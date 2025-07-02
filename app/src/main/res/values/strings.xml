@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">Cocoa Roast Scan</string>
+    <string name="welcome_title">Selamat Datang di Cocoa Roast Scan</string>
+    <string name="welcome_subtitle">Klasifikasi tingkat kematangan biji kakao setelah roasting</string>
+    <string name="btn_camera">Ambil Foto dari Kamera</string>
+    <string name="btn_gallery">Pilih dari Galeri</string>
+    <string name="choose_image_source">Pilih Sumber Gambar</string>
 </resources>

@@ -2,4 +2,21 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Primary Colors -->
+    <color name="primary">#8B4513</color>
+    <color name="primary_variant">#654321</color>
+    <color name="secondary">#D2691E</color>
+    
+    <!-- Background Colors -->
+    <color name="background_light">#FFF8F0</color>
+    <color name="surface">#FFFFFF</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#3E2723</color>
+    <color name="text_secondary">#6D4C41</color>
+    
+    <!-- Accent Colors -->
+    <color name="accent">#FF8A65</color>
+    <color name="accent_light">#FFAB91</color>
 </resources>
