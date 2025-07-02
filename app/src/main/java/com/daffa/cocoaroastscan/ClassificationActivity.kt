@@ -128,14 +128,20 @@ class ClassificationActivity : AppCompatActivity() {
         val imageUri = intent.getStringExtra(EXTRA_IMAGE_URI)
         val imagePath = intent.getStringExtra(EXTRA_IMAGE_PATH)
         
+        Log.d(TAG, "=== IMAGE PROCESSING START ===")
+        Log.d(TAG, "Image URI: $imageUri")
+        Log.d(TAG, "Image Path: $imagePath")
+        
         try {
             val bitmap = when {
                 imageUri != null -> {
+                    Log.d(TAG, "Loading image from URI...")
                     val uri = Uri.parse(imageUri)
                     val inputStream = contentResolver.openInputStream(uri)
                     BitmapFactory.decodeStream(inputStream)
                 }
                 imagePath != null -> {
+                    Log.d(TAG, "Loading image from file path...")
                     BitmapFactory.decodeFile(imagePath)
                 }
                 else -> {
@@ -145,10 +151,22 @@ class ClassificationActivity : AppCompatActivity() {
             }
             
             if (bitmap != null) {
+                Log.d(TAG, "✅ Bitmap loaded successfully")
                 Log.d(TAG, "Original bitmap size: ${bitmap.width}x${bitmap.height}")
+                Log.d(TAG, "Bitmap config: ${bitmap.config}")
+                Log.d(TAG, "Bitmap has alpha: ${bitmap.hasAlpha()}")
+                
+                // DEBUG: Analyze original bitmap pixels
+                analyzeImagePixels(bitmap, "Original")
                 
                 // Rotate image if needed based on EXIF data
                 val rotatedBitmap = rotateBitmapIfRequired(bitmap, imageUri, imagePath)
+                Log.d(TAG, "After rotation: ${rotatedBitmap.width}x${rotatedBitmap.height}")
+                
+                // Analyze rotated bitmap
+                if (rotatedBitmap != bitmap) {
+                    analyzeImagePixels(rotatedBitmap, "Rotated")
+                }
                 
                 // Display the image
                 ivResultImage.setImageBitmap(rotatedBitmap)
@@ -157,14 +175,105 @@ class ClassificationActivity : AppCompatActivity() {
                 val preprocessedBitmap = preprocessImage(rotatedBitmap)
                 Log.d(TAG, "Preprocessed bitmap size: ${preprocessedBitmap.width}x${preprocessedBitmap.height}")
                 
+                // Analyze preprocessed bitmap
+                analyzeImagePixels(preprocessedBitmap, "Preprocessed")
+                
                 classifyImage(preprocessedBitmap)
             } else {
+                Log.e(TAG, "❌ Failed to load bitmap")
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing image", e)
             Toast.makeText(this, "Error processing image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+    
+    private fun analyzeImagePixels(bitmap: Bitmap, stage: String) {
+        Log.d(TAG, "=== ANALYZING $stage IMAGE ===")
+        
+        val sampleSize = 100 // Sample 100 pixels
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(sampleSize)
+        
+        // Sample pixels from different positions
+        val samplePositions = mutableListOf<Pair<Int, Int>>()
+        for (i in 0 until sampleSize) {
+            val x = (i % 10) * (width / 10).coerceAtLeast(1)
+            val y = (i / 10) * (height / 10).coerceAtLeast(1)
+            samplePositions.add(Pair(x.coerceAtMost(width - 1), y.coerceAtMost(height - 1)))
+        }
+        
+        // Extract pixel values
+        val rValues = mutableListOf<Int>()
+        val gValues = mutableListOf<Int>()
+        val bValues = mutableListOf<Int>()
+        
+        samplePositions.forEachIndexed { index, (x, y) ->
+            val pixel = bitmap.getPixel(x, y)
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            
+            rValues.add(r)
+            gValues.add(g)
+            bValues.add(b)
+            
+            if (index < 5) { // Log first 5 pixels
+                Log.d(TAG, "$stage Pixel at ($x,$y): RGB($r,$g,$b)")
+            }
+        }
+        
+        // Calculate statistics
+        val rMin = rValues.minOrNull() ?: 0
+        val rMax = rValues.maxOrNull() ?: 0
+        val rAvg = rValues.average()
+        
+        val gMin = gValues.minOrNull() ?: 0
+        val gMax = gValues.maxOrNull() ?: 0
+        val gAvg = gValues.average()
+        
+        val bMin = bValues.minOrNull() ?: 0
+        val bMax = bValues.maxOrNull() ?: 0
+        val bAvg = bValues.average()
+        
+        Log.d(TAG, "$stage RED   - Min: $rMin, Max: $rMax, Avg: ${rAvg.toInt()}")
+        Log.d(TAG, "$stage GREEN - Min: $gMin, Max: $gMax, Avg: ${gAvg.toInt()}")
+        Log.d(TAG, "$stage BLUE  - Min: $bMin, Max: $bMax, Avg: ${bAvg.toInt()}")
+        
+        // Check if image is mostly white/blank
+        val avgBrightness = (rAvg + gAvg + bAvg) / 3
+        val variation = maxOf(rMax - rMin, gMax - gMin, bMax - bMin)
+        
+        Log.d(TAG, "$stage Average brightness: ${avgBrightness.toInt()}/255")
+        Log.d(TAG, "$stage Color variation: $variation/255")
+        
+        // Updated thresholds for raw values (0-255)
+        if (avgBrightness > 240) {
+            Log.w(TAG, "⚠️ WARNING: $stage image is very bright (mostly white)")
+        }
+        
+        if (variation < 20) {
+            Log.w(TAG, "⚠️ WARNING: $stage image has very low color variation")
+        }
+        
+        if (avgBrightness > 240 && variation < 20) {
+            Log.e(TAG, "❌ CRITICAL: $stage image appears to be mostly blank/white!")
+            Log.e(TAG, "❌ This will cause incorrect classification results!")
+            Log.e(TAG, "❌ Now using RAW VALUES 0-255 (fixed from working app)")
+            
+            // Show warning to user
+            if (stage == "Preprocessed") {
+                runOnUiThread {
+                    Toast.makeText(this@ClassificationActivity, 
+                        "⚠️ PERINGATAN: Gambar terlalu putih/kosong!\nHasil klasifikasi mungkin tidak akurat.\nCoba gunakan gambar biji kakao yang lebih jelas.", 
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        
+        Log.d(TAG, "=== END $stage ANALYSIS ===")
     }
     
     private fun rotateBitmapIfRequired(bitmap: Bitmap, imageUri: String?, imagePath: String?): Bitmap {
@@ -208,9 +317,12 @@ class ClassificationActivity : AppCompatActivity() {
     
     private fun classifyImage(bitmap: Bitmap) {
         try {
+            Log.d(TAG, "=== STARTING CLASSIFICATION ===")
+            Log.d(TAG, "🔧 FIXED: Using RAW VALUES 0-255 (same as working app)")
+            Log.d(TAG, "📱 Based on working TensorFlowHelper.kt approach")
+            
             val inputBuffer = convertBitmapToByteBuffer(bitmap)
             
-            Log.d(TAG, "=== STARTING CLASSIFICATION ===")
             Log.d(TAG, "Original buffer position: ${inputBuffer.position()}")
             Log.d(TAG, "Original buffer capacity: ${inputBuffer.capacity()}")
             
@@ -246,7 +358,7 @@ class ClassificationActivity : AppCompatActivity() {
     }
     
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
-        // SESUAI DENGAN TRAINING: input range 0-1
+        // BERDASARKAN APLIKASI LAMA: gunakan raw values 0-255 (TIDAK dinormalisasi)
         val byteBuffer = ByteBuffer.allocateDirect(4 * imageSize * imageSize * pixelSize)
         byteBuffer.order(ByteOrder.nativeOrder())
         
@@ -255,6 +367,7 @@ class ClassificationActivity : AppCompatActivity() {
         
         Log.d(TAG, "Converting bitmap to ByteBuffer...")
         Log.d(TAG, "Expected buffer size: ${4 * imageSize * imageSize * pixelSize} bytes")
+        Log.d(TAG, "USING RAW VALUES 0-255 (like working app)")
         
         // Debug: Sample some pixels to verify preprocessing
         val samplePixels = mutableListOf<String>()
@@ -264,42 +377,27 @@ class ClassificationActivity : AppCompatActivity() {
             for (j in 0 until imageSize) {
                 val value = intValues[pixel++]
                 
-                // OPTION 1: Normalize to 0-1 (current implementation)
-                val r = (value shr 16 and 0xFF) / 255.0f
-                val g = (value shr 8 and 0xFF) / 255.0f 
-                val b = (value and 0xFF) / 255.0f
-                
-                // OPTION 2: Raw values 0-255 (UNCOMMENT IF MODEL INCLUDES RESCALING LAYER)
-                // val r = (value shr 16 and 0xFF).toFloat()
-                // val g = (value shr 8 and 0xFF).toFloat()
-                // val b = (value and 0xFF).toFloat()
-                
-                // OPTION 3: Different normalization (UNCOMMENT TO TEST)
-                // val r = ((value shr 16 and 0xFF) - 127.5f) / 127.5f  // Range -1 to 1
-                // val g = ((value shr 8 and 0xFF) - 127.5f) / 127.5f
-                // val b = ((value and 0xFF) - 127.5f) / 127.5f
+                // FIXED: Use RAW values 0-255 (like working app)
+                val r = (value shr 16 and 0xFF).toFloat()
+                val g = (value shr 8 and 0xFF).toFloat()
+                val b = (value and 0xFF).toFloat()
                 
                 // Sample first few pixels for debugging
                 if (pixel <= 5) {
                     val originalR = (value shr 16 and 0xFF)
                     val originalG = (value shr 8 and 0xFF)
                     val originalB = (value and 0xFF)
-                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> normalized($r,$g,$b)")
+                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> raw($r,$g,$b)")
                 }
                 
                 byteBuffer.putFloat(r)
                 byteBuffer.putFloat(g)
                 byteBuffer.putFloat(b)
                 
-                // Additional validation for Option 1 (0-1 range)
-                if (r < 0f || r > 1f || g < 0f || g > 1f || b < 0f || b > 1f) {
-                    Log.e(TAG, "ERROR: Pixel values out of range [0,1]: R=$r, G=$g, B=$b")
+                // Validation for raw values 0-255
+                if (r < 0f || r > 255f || g < 0f || g > 255f || b < 0f || b > 255f) {
+                    Log.e(TAG, "ERROR: Pixel values out of range [0,255]: R=$r, G=$g, B=$b")
                 }
-                
-                // Additional validation for Option 2 (0-255 range)
-                // if (r < 0f || r > 255f || g < 0f || g > 255f || b < 0f || b > 255f) {
-                //     Log.e(TAG, "ERROR: Pixel values out of range [0,255]: R=$r, G=$g, B=$b")
-                // }
             }
         }
         
