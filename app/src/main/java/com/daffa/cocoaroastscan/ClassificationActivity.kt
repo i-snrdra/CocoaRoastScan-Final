@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
-import kotlin.math.max
+import kotlin.math.exp
 
 class ClassificationActivity : AppCompatActivity() {
     
@@ -35,14 +35,23 @@ class ClassificationActivity : AppCompatActivity() {
     
     private val imageSize = 256
     private val pixelSize = 3
-    private val imageMean = 0.0f
-    private val imageStd = 255.0f
     
-    // Labels for Model A (skin condition)
+    // ===============================================
+    // TESTING DIFFERENT LABEL ORDERS
+    // ===============================================
+    
+    // OPTION 1: Alfabetikal (current)
     private val labelsModelA = arrayOf("dikupas", "tidak_dikupas")
-    
-    // Labels for Model D (color)
     private val labelsModelD = arrayOf("cokelat", "cokelat_muda", "hitam")
+    
+    // OPTION 2: Reverse order (uncomment to test)
+    // private val labelsModelA = arrayOf("tidak_dikupas", "dikupas") 
+    // private val labelsModelD = arrayOf("hitam", "cokelat_muda", "cokelat")
+    
+    // OPTION 3: Different order (uncomment to test)
+    // private val labelsModelD = arrayOf("cokelat_muda", "cokelat", "hitam")
+    
+    // ===============================================
     
     companion object {
         const val EXTRA_IMAGE_URI = "extra_image_uri"
@@ -79,9 +88,29 @@ class ClassificationActivity : AppCompatActivity() {
             interpreterModelA = Interpreter(loadModelFile("mobilenetv2_model_a_20250621_0107.tflite"))
             interpreterModelD = Interpreter(loadModelFile("mobilenetv2_model_d_warna_20250621_0202.tflite"))
             Log.d(TAG, "Models loaded successfully")
+            
+            // Debug model input/output info
+            interpreterModelA?.let { interpreter ->
+                val inputTensor = interpreter.getInputTensor(0)
+                val outputTensor = interpreter.getOutputTensor(0)
+                Log.d(TAG, "Model A - Input shape: ${inputTensor.shape().contentToString()}")
+                Log.d(TAG, "Model A - Input data type: ${inputTensor.dataType()}")
+                Log.d(TAG, "Model A - Output shape: ${outputTensor.shape().contentToString()}")
+                Log.d(TAG, "Model A - Output data type: ${outputTensor.dataType()}")
+            }
+            
+            interpreterModelD?.let { interpreter ->
+                val inputTensor = interpreter.getInputTensor(0)
+                val outputTensor = interpreter.getOutputTensor(0)
+                Log.d(TAG, "Model D - Input shape: ${inputTensor.shape().contentToString()}")
+                Log.d(TAG, "Model D - Input data type: ${inputTensor.dataType()}")
+                Log.d(TAG, "Model D - Output shape: ${outputTensor.shape().contentToString()}")
+                Log.d(TAG, "Model D - Output data type: ${outputTensor.dataType()}")
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error loading models", e)
-            Toast.makeText(this, "Error loading AI models", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error loading AI models: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
@@ -116,6 +145,8 @@ class ClassificationActivity : AppCompatActivity() {
             }
             
             if (bitmap != null) {
+                Log.d(TAG, "Original bitmap size: ${bitmap.width}x${bitmap.height}")
+                
                 // Rotate image if needed based on EXIF data
                 val rotatedBitmap = rotateBitmapIfRequired(bitmap, imageUri, imagePath)
                 
@@ -124,13 +155,15 @@ class ClassificationActivity : AppCompatActivity() {
                 
                 // Preprocess and classify
                 val preprocessedBitmap = preprocessImage(rotatedBitmap)
+                Log.d(TAG, "Preprocessed bitmap size: ${preprocessedBitmap.width}x${preprocessedBitmap.height}")
+                
                 classifyImage(preprocessedBitmap)
             } else {
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing image", e)
-            Toast.makeText(this, "Error processing image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error processing image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -169,7 +202,7 @@ class ClassificationActivity : AppCompatActivity() {
     }
     
     private fun preprocessImage(bitmap: Bitmap): Bitmap {
-        // Resize to 256x256
+        // Resize to 256x256 - SAMA DENGAN TRAINING
         return Bitmap.createScaledBitmap(bitmap, imageSize, imageSize, true)
     }
     
@@ -177,76 +210,227 @@ class ClassificationActivity : AppCompatActivity() {
         try {
             val inputBuffer = convertBitmapToByteBuffer(bitmap)
             
-            // Classify with Model A (skin condition)
-            val resultA = classifyWithModelA(inputBuffer.duplicate())
+            Log.d(TAG, "=== STARTING CLASSIFICATION ===")
+            Log.d(TAG, "Original buffer position: ${inputBuffer.position()}")
+            Log.d(TAG, "Original buffer capacity: ${inputBuffer.capacity()}")
             
-            // Classify with Model D (color)
-            val resultD = classifyWithModelD(inputBuffer.duplicate())
+            // Create separate buffers for each model to avoid position issues
+            val bufferA = ByteBuffer.allocateDirect(inputBuffer.capacity())
+            val bufferD = ByteBuffer.allocateDirect(inputBuffer.capacity())
+            
+            // Copy original buffer to both
+            inputBuffer.rewind()
+            bufferA.put(inputBuffer)
+            bufferA.rewind()
+            
+            inputBuffer.rewind()
+            bufferD.put(inputBuffer)
+            bufferD.rewind()
+            
+            Log.d(TAG, "Buffer A position: ${bufferA.position()}, capacity: ${bufferA.capacity()}")
+            Log.d(TAG, "Buffer D position: ${bufferD.position()}, capacity: ${bufferD.capacity()}")
+            
+            // Classify with Model A (skin condition)
+            val resultA = classifyWithModelA(bufferA)
+            
+            // Classify with Model D (color)  
+            val resultD = classifyWithModelD(bufferD)
             
             // Display results
             displayResults(resultA, resultD)
             
         } catch (e: Exception) {
             Log.e(TAG, "Error during classification", e)
-            Toast.makeText(this, "Error during classification", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error during classification: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
     
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
+        // SESUAI DENGAN TRAINING: input range 0-1
         val byteBuffer = ByteBuffer.allocateDirect(4 * imageSize * imageSize * pixelSize)
         byteBuffer.order(ByteOrder.nativeOrder())
         
         val intValues = IntArray(imageSize * imageSize)
         bitmap.getPixels(intValues, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         
+        Log.d(TAG, "Converting bitmap to ByteBuffer...")
+        Log.d(TAG, "Expected buffer size: ${4 * imageSize * imageSize * pixelSize} bytes")
+        
+        // Debug: Sample some pixels to verify preprocessing
+        val samplePixels = mutableListOf<String>()
+        
         var pixel = 0
         for (i in 0 until imageSize) {
             for (j in 0 until imageSize) {
                 val value = intValues[pixel++]
-                byteBuffer.putFloat(((value shr 16 and 0xFF) - imageMean) / imageStd)
-                byteBuffer.putFloat(((value shr 8 and 0xFF) - imageMean) / imageStd)
-                byteBuffer.putFloat(((value and 0xFF) - imageMean) / imageStd)
+                
+                // OPTION 1: Normalize to 0-1 (current implementation)
+                val r = (value shr 16 and 0xFF) / 255.0f
+                val g = (value shr 8 and 0xFF) / 255.0f 
+                val b = (value and 0xFF) / 255.0f
+                
+                // OPTION 2: Raw values 0-255 (UNCOMMENT IF MODEL INCLUDES RESCALING LAYER)
+                // val r = (value shr 16 and 0xFF).toFloat()
+                // val g = (value shr 8 and 0xFF).toFloat()
+                // val b = (value and 0xFF).toFloat()
+                
+                // OPTION 3: Different normalization (UNCOMMENT TO TEST)
+                // val r = ((value shr 16 and 0xFF) - 127.5f) / 127.5f  // Range -1 to 1
+                // val g = ((value shr 8 and 0xFF) - 127.5f) / 127.5f
+                // val b = ((value and 0xFF) - 127.5f) / 127.5f
+                
+                // Sample first few pixels for debugging
+                if (pixel <= 5) {
+                    val originalR = (value shr 16 and 0xFF)
+                    val originalG = (value shr 8 and 0xFF)
+                    val originalB = (value and 0xFF)
+                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> normalized($r,$g,$b)")
+                }
+                
+                byteBuffer.putFloat(r)
+                byteBuffer.putFloat(g)
+                byteBuffer.putFloat(b)
+                
+                // Additional validation for Option 1 (0-1 range)
+                if (r < 0f || r > 1f || g < 0f || g > 1f || b < 0f || b > 1f) {
+                    Log.e(TAG, "ERROR: Pixel values out of range [0,1]: R=$r, G=$g, B=$b")
+                }
+                
+                // Additional validation for Option 2 (0-255 range)
+                // if (r < 0f || r > 255f || g < 0f || g > 255f || b < 0f || b > 255f) {
+                //     Log.e(TAG, "ERROR: Pixel values out of range [0,255]: R=$r, G=$g, B=$b")
+                // }
             }
         }
         
+        // Log sample pixels
+        samplePixels.forEach { Log.d(TAG, it) }
+        
+        Log.d(TAG, "ByteBuffer created with size: ${byteBuffer.capacity()}")
+        Log.d(TAG, "ByteBuffer position after fill: ${byteBuffer.position()}")
+        
+        // Reset position for model input
+        byteBuffer.rewind()
+        Log.d(TAG, "ByteBuffer position after rewind: ${byteBuffer.position()}")
+        
         return byteBuffer
+    }
+    
+    private fun softmax(logits: FloatArray): FloatArray {
+        val maxLogit = logits.maxOrNull() ?: 0f
+        val expValues = logits.map { exp(it - maxLogit) }.toFloatArray()
+        val sumExp = expValues.sum()
+        return expValues.map { it / sumExp }.toFloatArray()
     }
     
     private fun classifyWithModelA(inputBuffer: ByteBuffer): Pair<String, Float> {
         val result = Array(1) { FloatArray(labelsModelA.size) }
         
-        interpreterModelA?.run(inputBuffer, result)
+        Log.d(TAG, "=== MODEL A INFERENCE ===")
+        Log.d(TAG, "Input buffer capacity: ${inputBuffer.capacity()}")
+        Log.d(TAG, "Input buffer position before inference: ${inputBuffer.position()}")
+        Log.d(TAG, "Expected input size: ${1 * imageSize * imageSize * pixelSize * 4} bytes")
+        
+        try {
+            interpreterModelA?.run(inputBuffer, result)
+            Log.d(TAG, "Model A inference completed successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during Model A inference: ${e.message}", e)
+            return Pair("error", 0f)
+        }
         
         val output = result[0]
-        var maxIndex = 0
-        var maxConfidence = output[0]
+        Log.d(TAG, "Model A raw output: ${output.contentToString()}")
+        Log.d(TAG, "Model A output size: ${output.size}")
         
-        for (i in output.indices) {
-            if (output[i] > maxConfidence) {
-                maxConfidence = output[i]
+        // Check if output values make sense
+        val outputSum = output.sum()
+        Log.d(TAG, "Model A output sum: $outputSum")
+        
+        // Apply softmax if needed (though TensorFlow Lite model should already have softmax)
+        val probabilities = if (outputSum > 1.1f || outputSum < 0.9f || output.any { it < 0 }) {
+            Log.d(TAG, "Applying softmax to Model A output (sum=$outputSum)")
+            softmax(output)
+        } else {
+            Log.d(TAG, "Using raw probabilities from Model A (sum=$outputSum)")
+            output
+        }
+        
+        Log.d(TAG, "Model A probabilities: ${probabilities.contentToString()}")
+        Log.d(TAG, "Model A labels: ${labelsModelA.contentToString()}")
+        
+        // DEBUG: Test different label orders
+        for (i in probabilities.indices) {
+            Log.d(TAG, "DEBUG - Index $i: ${labelsModelA[i]} = ${probabilities[i]} (${(probabilities[i] * 100).toInt()}%)")
+        }
+        
+        var maxIndex = 0
+        var maxConfidence = probabilities[0]
+        
+        for (i in probabilities.indices) {
+            if (probabilities[i] > maxConfidence) {
+                maxConfidence = probabilities[i]
                 maxIndex = i
             }
         }
         
+        Log.d(TAG, "Model A final result: ${labelsModelA[maxIndex]} with confidence $maxConfidence")
+        Log.d(TAG, "=== END MODEL A ===")
         return Pair(labelsModelA[maxIndex], maxConfidence)
     }
     
     private fun classifyWithModelD(inputBuffer: ByteBuffer): Pair<String, Float> {
         val result = Array(1) { FloatArray(labelsModelD.size) }
         
-        interpreterModelD?.run(inputBuffer, result)
+        Log.d(TAG, "=== MODEL D INFERENCE ===")
+        Log.d(TAG, "Input buffer capacity: ${inputBuffer.capacity()}")
+        Log.d(TAG, "Input buffer position before inference: ${inputBuffer.position()}")
+        
+        try {
+            interpreterModelD?.run(inputBuffer, result)
+            Log.d(TAG, "Model D inference completed successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during Model D inference: ${e.message}", e)
+            return Pair("error", 0f)
+        }
         
         val output = result[0]
-        var maxIndex = 0
-        var maxConfidence = output[0]
+        Log.d(TAG, "Model D raw output: ${output.contentToString()}")
+        Log.d(TAG, "Model D output size: ${output.size}")
         
-        for (i in output.indices) {
-            if (output[i] > maxConfidence) {
-                maxConfidence = output[i]
+        // Check if output values make sense
+        val outputSum = output.sum()
+        Log.d(TAG, "Model D output sum: $outputSum")
+        
+        // Apply softmax if needed
+        val probabilities = if (outputSum > 1.1f || outputSum < 0.9f || output.any { it < 0 }) {
+            Log.d(TAG, "Applying softmax to Model D output (sum=$outputSum)")
+            softmax(output)
+        } else {
+            Log.d(TAG, "Using raw probabilities from Model D (sum=$outputSum)")
+            output
+        }
+        
+        Log.d(TAG, "Model D probabilities: ${probabilities.contentToString()}")
+        Log.d(TAG, "Model D labels: ${labelsModelD.contentToString()}")
+        
+        // DEBUG: Test all possible label mappings
+        for (i in probabilities.indices) {
+            Log.d(TAG, "DEBUG - Index $i: ${labelsModelD[i]} = ${probabilities[i]} (${(probabilities[i] * 100).toInt()}%)")
+        }
+        
+        var maxIndex = 0
+        var maxConfidence = probabilities[0]
+        
+        for (i in probabilities.indices) {
+            if (probabilities[i] > maxConfidence) {
+                maxConfidence = probabilities[i]
                 maxIndex = i
             }
         }
         
+        Log.d(TAG, "Model D final result: ${labelsModelD[maxIndex]} with confidence $maxConfidence")
+        Log.d(TAG, "=== END MODEL D ===")
         return Pair(labelsModelD[maxIndex], maxConfidence)
     }
     
@@ -278,9 +462,9 @@ class ClassificationActivity : AppCompatActivity() {
         }
         tvRoastingStatus.text = roastingStatusText
         
-        Log.d(TAG, "Classification Results:")
+        Log.d(TAG, "Final Classification Results:")
         Log.d(TAG, "Model A: ${resultA.first} (${confidenceA}%)")
-        Log.d(TAG, "Model D: ${resultD.first}")
+        Log.d(TAG, "Model D: ${resultD.first} (${(resultD.second * 100).toInt()}%)")
         Log.d(TAG, "Roasting Status: $roastingStatusText")
     }
     
