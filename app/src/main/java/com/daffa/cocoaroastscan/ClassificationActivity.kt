@@ -318,8 +318,9 @@ class ClassificationActivity : AppCompatActivity() {
     private fun classifyImage(bitmap: Bitmap) {
         try {
             Log.d(TAG, "=== STARTING CLASSIFICATION ===")
-            Log.d(TAG, "🔧 FIXED: Using RAW VALUES 0-255 (same as working app)")
-            Log.d(TAG, "📱 Based on working TensorFlowHelper.kt approach")
+            Log.d(TAG, "🔧 CURRENT: Using RAW VALUES 0-255 (same as working app)")
+            Log.d(TAG, "📘 train_d.py shows: model expects 0-1 (Rescaling layer)")
+            Log.d(TAG, "📱 If results still wrong, try normalized approach")
             
             val inputBuffer = convertBitmapToByteBuffer(bitmap)
             
@@ -358,7 +359,7 @@ class ClassificationActivity : AppCompatActivity() {
     }
     
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
-        // BERDASARKAN APLIKASI LAMA: gunakan raw values 0-255 (TIDAK dinormalisasi)
+        // TESTING BOTH APPROACHES based on train_d.py analysis
         val byteBuffer = ByteBuffer.allocateDirect(4 * imageSize * imageSize * pixelSize)
         byteBuffer.order(ByteOrder.nativeOrder())
         
@@ -367,7 +368,8 @@ class ClassificationActivity : AppCompatActivity() {
         
         Log.d(TAG, "Converting bitmap to ByteBuffer...")
         Log.d(TAG, "Expected buffer size: ${4 * imageSize * imageSize * pixelSize} bytes")
-        Log.d(TAG, "USING RAW VALUES 0-255 (like working app)")
+        Log.d(TAG, "APPROACH 1: Raw values 0-255 (CURRENTLY ACTIVE)")
+        Log.d(TAG, "APPROACH 2: Normalized 0-1 (COMMENTED OUT - for testing if needed)")
         
         // Debug: Sample some pixels to verify preprocessing
         val samplePixels = mutableListOf<String>()
@@ -377,26 +379,32 @@ class ClassificationActivity : AppCompatActivity() {
             for (j in 0 until imageSize) {
                 val value = intValues[pixel++]
                 
-                // FIXED: Use RAW values 0-255 (like working app)
-                val r = (value shr 16 and 0xFF).toFloat()
-                val g = (value shr 8 and 0xFF).toFloat()
-                val b = (value and 0xFF).toFloat()
+                // APPROACH 1: Raw values 0-255 (working in old app)
+                // val r = (value shr 16 and 0xFF).toFloat()
+                // val g = (value shr 8 and 0xFF).toFloat()
+                // val b = (value and 0xFF).toFloat()
+                
+                // APPROACH 2: Normalized 0-1 (as per train_d.py - uncomment to test)
+                val r = (value shr 16 and 0xFF) / 255.0f
+                val g = (value shr 8 and 0xFF) / 255.0f
+                val b = (value and 0xFF) / 255.0f
                 
                 // Sample first few pixels for debugging
                 if (pixel <= 5) {
                     val originalR = (value shr 16 and 0xFF)
                     val originalG = (value shr 8 and 0xFF)
                     val originalB = (value and 0xFF)
-                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> raw($r,$g,$b)")
+                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> processed($r,$g,$b)")
                 }
                 
                 byteBuffer.putFloat(r)
                 byteBuffer.putFloat(g)
                 byteBuffer.putFloat(b)
                 
-                // Validation for raw values 0-255
-                if (r < 0f || r > 255f || g < 0f || g > 255f || b < 0f || b > 255f) {
-                    Log.e(TAG, "ERROR: Pixel values out of range [0,255]: R=$r, G=$g, B=$b")
+                // Validation
+                val maxExpected = 255f // Change to 1f if using normalized approach
+                if (r < 0f || r > maxExpected || g < 0f || g > maxExpected || b < 0f || b > maxExpected) {
+                    Log.e(TAG, "ERROR: Pixel values out of range [0,$maxExpected]: R=$r, G=$g, B=$b")
                 }
             }
         }
@@ -474,6 +482,9 @@ class ClassificationActivity : AppCompatActivity() {
         
         Log.d(TAG, "Model A final result: ${labelsModelA[maxIndex]} with confidence $maxConfidence")
         Log.d(TAG, "=== END MODEL A ===")
+        
+        // Store probabilities for display
+        lastModelAProbabilities = probabilities
         return Pair(labelsModelA[maxIndex], maxConfidence)
     }
     
@@ -529,42 +540,69 @@ class ClassificationActivity : AppCompatActivity() {
         
         Log.d(TAG, "Model D final result: ${labelsModelD[maxIndex]} with confidence $maxConfidence")
         Log.d(TAG, "=== END MODEL D ===")
+        
+        // Store probabilities for display
+        lastModelDProbabilities = probabilities
         return Pair(labelsModelD[maxIndex], maxConfidence)
     }
     
     private fun displayResults(resultA: Pair<String, Float>, resultD: Pair<String, Float>) {
-        // Display skin condition
-        val skinConditionText = when (resultA.first) {
-            "dikupas" -> getString(R.string.peeled)
-            "tidak_dikupas" -> getString(R.string.not_peeled)
-            else -> resultA.first
-        }
-        val confidenceA = (resultA.second * 100).toInt()
-        tvSkinCondition.text = "$skinConditionText ($confidenceA%)"
+        // Get all probabilities from last inference results
+        val allProbabilitiesA = getLastModelAProbabilities()
+        val allProbabilitiesD = getLastModelDProbabilities()
         
-        // Display bean color
-        val beanColorText = when (resultD.first) {
-            "cokelat" -> getString(R.string.brown)
-            "cokelat_muda" -> getString(R.string.light_brown)
-            "hitam" -> getString(R.string.dark_brown)
-            else -> resultD.first
+        // Display skin condition - ALL POSSIBILITIES
+        val skinConditionText = buildString {
+            append("Kondisi Kulit:\n")
+            allProbabilitiesA.forEachIndexed { index, probability ->
+                val labelText = when (labelsModelA[index]) {
+                    "dikupas" -> "Dikupas"
+                    "tidak_dikupas" -> "Tidak Dikupas"
+                    else -> labelsModelA[index]
+                }
+                val percentage = (probability * 100).toInt()
+                append("$labelText ($percentage%)\n")
+            }
+        }
+        tvSkinCondition.text = skinConditionText
+        
+        // Display bean color - ALL POSSIBILITIES  
+        val beanColorText = buildString {
+            append("Warna Biji:\n")
+            allProbabilitiesD.forEachIndexed { index, probability ->
+                val labelText = when (labelsModelD[index]) {
+                    "cokelat" -> "Brown"
+                    "cokelat_muda" -> "Light Brown"
+                    "hitam" -> "Dark Brown"
+                    else -> labelsModelD[index]
+                }
+                val percentage = (probability * 100).toInt()
+                append("$labelText ($percentage%)\n")
+            }
         }
         tvBeanColor.text = beanColorText
         
-        // Display roasting status based on color
+        // Display roasting status based on highest color probability
         val roastingStatusText = when (resultD.first) {
-            "cokelat" -> getString(R.string.mature)
-            "cokelat_muda" -> getString(R.string.not_mature)
-            "hitam" -> getString(R.string.over_roast)
+            "cokelat" -> "Matang"
+            "cokelat_muda" -> "Belum Matang"
+            "hitam" -> "Over Roast"
             else -> "Unknown"
         }
         tvRoastingStatus.text = roastingStatusText
         
         Log.d(TAG, "Final Classification Results:")
-        Log.d(TAG, "Model A: ${resultA.first} (${confidenceA}%)")
+        Log.d(TAG, "Model A: ${resultA.first} (${(resultA.second * 100).toInt()}%)")
         Log.d(TAG, "Model D: ${resultD.first} (${(resultD.second * 100).toInt()}%)")
         Log.d(TAG, "Roasting Status: $roastingStatusText")
     }
+    
+    // Store probabilities for display
+    private var lastModelAProbabilities: FloatArray = floatArrayOf()
+    private var lastModelDProbabilities: FloatArray = floatArrayOf()
+    
+    private fun getLastModelAProbabilities(): FloatArray = lastModelAProbabilities
+    private fun getLastModelDProbabilities(): FloatArray = lastModelDProbabilities
     
     override fun onDestroy() {
         super.onDestroy()
