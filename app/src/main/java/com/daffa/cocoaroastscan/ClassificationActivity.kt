@@ -318,9 +318,8 @@ class ClassificationActivity : AppCompatActivity() {
     private fun classifyImage(bitmap: Bitmap) {
         try {
             Log.d(TAG, "=== STARTING CLASSIFICATION ===")
-            Log.d(TAG, "🔧 CURRENT: Using RAW VALUES 0-255 (same as working app)")
-            Log.d(TAG, "📘 train_d.py shows: model expects 0-1 (Rescaling layer)")
-            Log.d(TAG, "📱 If results still wrong, try normalized approach")
+            Log.d(TAG, "✅ USING: Raw values 0-255 (confirmed optimal)")
+            Log.d(TAG, "📊 Will display all probabilities for each class")
             
             val inputBuffer = convertBitmapToByteBuffer(bitmap)
             
@@ -359,7 +358,7 @@ class ClassificationActivity : AppCompatActivity() {
     }
     
     private fun convertBitmapToByteBuffer(bitmap: Bitmap): ByteBuffer {
-        // TESTING BOTH APPROACHES based on train_d.py analysis
+        // OPTIMAL: Raw values 0-255 (confirmed working best)
         val byteBuffer = ByteBuffer.allocateDirect(4 * imageSize * imageSize * pixelSize)
         byteBuffer.order(ByteOrder.nativeOrder())
         
@@ -368,8 +367,7 @@ class ClassificationActivity : AppCompatActivity() {
         
         Log.d(TAG, "Converting bitmap to ByteBuffer...")
         Log.d(TAG, "Expected buffer size: ${4 * imageSize * imageSize * pixelSize} bytes")
-        Log.d(TAG, "APPROACH 1: Raw values 0-255 (CURRENTLY ACTIVE)")
-        Log.d(TAG, "APPROACH 2: Normalized 0-1 (COMMENTED OUT - for testing if needed)")
+        Log.d(TAG, "Using RAW VALUES 0-255 (confirmed optimal approach)")
         
         // Debug: Sample some pixels to verify preprocessing
         val samplePixels = mutableListOf<String>()
@@ -379,32 +377,26 @@ class ClassificationActivity : AppCompatActivity() {
             for (j in 0 until imageSize) {
                 val value = intValues[pixel++]
                 
-                // APPROACH 1: Raw values 0-255 (working in old app)
+                // Raw values 0-255 (optimal approach)
                 val r = (value shr 16 and 0xFF).toFloat()
                 val g = (value shr 8 and 0xFF).toFloat()
                 val b = (value and 0xFF).toFloat()
-                
-                // APPROACH 2: Normalized 0-1 (as per train_d.py - uncomment to test)
-                // val r = (value shr 16 and 0xFF) / 255.0f
-                // val g = (value shr 8 and 0xFF) / 255.0f
-                // val b = (value and 0xFF) / 255.0f
                 
                 // Sample first few pixels for debugging
                 if (pixel <= 5) {
                     val originalR = (value shr 16 and 0xFF)
                     val originalG = (value shr 8 and 0xFF)
                     val originalB = (value and 0xFF)
-                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> processed($r,$g,$b)")
+                    samplePixels.add("Pixel $pixel: RGB($originalR,$originalG,$originalB) -> raw($r,$g,$b)")
                 }
                 
                 byteBuffer.putFloat(r)
                 byteBuffer.putFloat(g)
                 byteBuffer.putFloat(b)
                 
-                // Validation
-                val maxExpected = 255f // Change to 1f if using normalized approach
-                if (r < 0f || r > maxExpected || g < 0f || g > maxExpected || b < 0f || b > maxExpected) {
-                    Log.e(TAG, "ERROR: Pixel values out of range [0,$maxExpected]: R=$r, G=$g, B=$b")
+                // Validation for raw values 0-255
+                if (r < 0f || r > 255f || g < 0f || g > 255f || b < 0f || b > 255f) {
+                    Log.e(TAG, "ERROR: Pixel values out of range [0,255]: R=$r, G=$g, B=$b")
                 }
             }
         }
