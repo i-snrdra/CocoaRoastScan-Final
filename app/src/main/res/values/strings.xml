@@ -5,4 +5,28 @@
     <string name="btn_camera">Ambil Foto dari Kamera</string>
     <string name="btn_gallery">Pilih dari Galeri</string>
     <string name="choose_image_source">Pilih Sumber Gambar</string>
+    
+    <!-- Classification Activity -->
+    <string name="classification_title">Hasil Klasifikasi</string>
+    <string name="skin_condition">Kondisi Kulit:</string>
+    <string name="bean_color">Warna Biji:</string>
+    <string name="roasting_status">Status Roasting:</string>
+    <string name="roasting_info_title">Informasi Durasi Roasting</string>
+    <string name="table_header_color">Warna</string>
+    <string name="table_header_duration">Durasi Roasting</string>
+    <string name="over_roast">Over Roast</string>
+    <string name="mature">Matang</string>
+    <string name="not_mature">Belum Matang</string>
+    <string name="over_roast_duration">&gt;6 menit</string>
+    <string name="mature_duration">5-6 menit</string>
+    <string name="not_mature_duration">&lt;5 menit</string>
+    <string name="btn_back">Kembali</string>
+    <string name="processing">Memproses gambar...</string>
+    
+    <!-- Labels -->
+    <string name="peeled">Dikupas</string>
+    <string name="not_peeled">Tidak Dikupas</string>
+    <string name="brown">Brown</string>
+    <string name="light_brown">Light Brown</string>
+    <string name="dark_brown">Dark Brown</string>
 </resources>

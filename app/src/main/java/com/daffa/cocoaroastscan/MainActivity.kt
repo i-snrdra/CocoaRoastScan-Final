@@ -68,9 +68,10 @@ class MainActivity : AppCompatActivity() {
         // Camera launcher
         cameraLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
-                // TODO: Process captured image
-                Toast.makeText(this, "Foto berhasil diambil! Path: $currentPhotoPath", Toast.LENGTH_LONG).show()
-                // Nanti akan diteruskan ke activity klasifikasi
+                // Start ClassificationActivity with image path
+                val intent = Intent(this, ClassificationActivity::class.java)
+                intent.putExtra(ClassificationActivity.EXTRA_IMAGE_PATH, currentPhotoPath)
+                startActivity(intent)
             }
         }
         
@@ -79,9 +80,10 @@ class MainActivity : AppCompatActivity() {
             if (result.resultCode == RESULT_OK && result.data != null) {
                 val selectedImageUri: Uri? = result.data?.data
                 selectedImageUri?.let {
-                    // TODO: Process selected image
-                    Toast.makeText(this, "Gambar berhasil dipilih! Uri: $it", Toast.LENGTH_LONG).show()
-                    // Nanti akan diteruskan ke activity klasifikasi
+                    // Start ClassificationActivity with image URI
+                    val intent = Intent(this, ClassificationActivity::class.java)
+                    intent.putExtra(ClassificationActivity.EXTRA_IMAGE_URI, it.toString())
+                    startActivity(intent)
                 }
             }
         }

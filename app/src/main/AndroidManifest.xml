@@ -27,6 +27,15 @@
             </intent-filter>
         </activity>
         
+        <activity
+            android:name=".ClassificationActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

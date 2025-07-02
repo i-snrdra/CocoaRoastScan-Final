@@ -33,6 +33,10 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    
+    aaptOptions {
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -42,6 +46,14 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+    
+    // TensorFlow Lite
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    
+    // ExifInterface for image rotation
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
