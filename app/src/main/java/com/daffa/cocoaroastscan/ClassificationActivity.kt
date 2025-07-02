@@ -380,14 +380,14 @@ class ClassificationActivity : AppCompatActivity() {
                 val value = intValues[pixel++]
                 
                 // APPROACH 1: Raw values 0-255 (working in old app)
-                // val r = (value shr 16 and 0xFF).toFloat()
-                // val g = (value shr 8 and 0xFF).toFloat()
-                // val b = (value and 0xFF).toFloat()
+                val r = (value shr 16 and 0xFF).toFloat()
+                val g = (value shr 8 and 0xFF).toFloat()
+                val b = (value and 0xFF).toFloat()
                 
                 // APPROACH 2: Normalized 0-1 (as per train_d.py - uncomment to test)
-                val r = (value shr 16 and 0xFF) / 255.0f
-                val g = (value shr 8 and 0xFF) / 255.0f
-                val b = (value and 0xFF) / 255.0f
+                // val r = (value shr 16 and 0xFF) / 255.0f
+                // val g = (value shr 8 and 0xFF) / 255.0f
+                // val b = (value and 0xFF) / 255.0f
                 
                 // Sample first few pixels for debugging
                 if (pixel <= 5) {
@@ -553,7 +553,6 @@ class ClassificationActivity : AppCompatActivity() {
         
         // Display skin condition - ALL POSSIBILITIES
         val skinConditionText = buildString {
-            append("Kondisi Kulit:\n")
             allProbabilitiesA.forEachIndexed { index, probability ->
                 val labelText = when (labelsModelA[index]) {
                     "dikupas" -> "Dikupas"
@@ -568,7 +567,6 @@ class ClassificationActivity : AppCompatActivity() {
         
         // Display bean color - ALL POSSIBILITIES  
         val beanColorText = buildString {
-            append("Warna Biji:\n")
             allProbabilitiesD.forEachIndexed { index, probability ->
                 val labelText = when (labelsModelD[index]) {
                     "cokelat" -> "Brown"
